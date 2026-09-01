@@ -19,7 +19,7 @@ Most churn projects stop at the first question. This one spends most of its effo
 
 - **EDA:** Mann-Whitney U for continuous variables, chi-square and Cramér's V for categorical associations — every relationship tested statistically, not eyeballed.
 - **Feature engineering:** leakage-safe by construction — engineered features use fixed rules or per-row arithmetic computed before any split; the two features that do need a dataset statistic (spend-median threshold, one-hot encoding) are fit on training data only.
-- **Modeling:** Logistic Regression, Random Forest, and XGBoost compared; best model (Logistic Regression) reaches 0.848 CV AUC-ROC.
+- **Modeling:** Logistic Regression, Random Forest, and XGBoost compared; Logistic Regression edges out the others on AUC-ROC (0.837 vs. 0.828 for XGBoost), showing model complexity buys little here. XGBoost was carried forward for threshold-locking and SHAP interpretation, mainly to demonstrate that tooling — it's the model behind the final predictions and the dashboard.
 - **Threshold selection:** locked via cross-validation on training data only, not tuned against the test set.
 - **Calibration:** checked directly (Brier score 0.168).
 - **Interpretation:** SHAP values and subgroup error analysis, including an honest look at where the model's blind spots are.

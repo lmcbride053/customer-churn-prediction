@@ -1,0 +1,5 @@
+{
+  "model": "XGBoost",
+  "locked_threshold": 0.4999999999999998,
+  "brier_score": 0.16785459220409393
+}

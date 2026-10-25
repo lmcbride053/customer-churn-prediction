@@ -1,44 +1,71 @@
-# Predicting Churn, From Signal to Retention Decision
+# Predicting Churn: From Signal to Retention Decision
 
-Can churn be predicted accurately enough to support targeted retention, and under what economic conditions does acting on those predictions actually beat simpler alternatives? A model is only half the answer — this project treats the decision built on top of it as the real point.
-
-**Full write-up with charts:** [case study on my portfolio](https://lmcbride053.github.io/project-churn.html)
+Can churn be predicted well enough to support targeted retention, and under what economic conditions does acting on those predictions actually beat simpler alternatives? A model is only half the answer. This project treats the decision built on top of it as the real point.
 
 ## Two questions, not one
 
 - **Data science question:** can customers at elevated churn risk be identified reliably?
-- **Decision-science question:** can those predictions improve a retention strategy, and does that hold up once the assumptions behind it are stated honestly?
+- **Decision question:** can those predictions improve a retention strategy, and does that still hold once the assumptions behind it are stated openly?
 
 Most churn projects stop at the first question. This one spends most of its effort on the second.
 
 ## Dataset
 
-7,043 Telco customers (11 dropped for missing billing data), leaving 7,032. Churn rate: 26.6%.
-
-## Approach
-
-- **EDA:** Mann-Whitney U for continuous variables, chi-square and Cramér's V for categorical associations — every relationship tested statistically, not eyeballed.
-- **Feature engineering:** leakage-safe by construction — engineered features use fixed rules or per-row arithmetic computed before any split; the two features that do need a dataset statistic (spend-median threshold, one-hot encoding) are fit on training data only.
-- **Modeling:** Logistic Regression, Random Forest, and XGBoost compared; Logistic Regression edges out the others on AUC-ROC (0.837 vs. 0.828 for XGBoost), showing model complexity buys little here. XGBoost was carried forward for threshold-locking and SHAP interpretation, mainly to demonstrate that tooling — it's the model behind the final predictions and the dashboard.
-- **Threshold selection:** locked via cross-validation on training data only, not tuned against the test set.
-- **Calibration:** checked directly (Brier score 0.168).
-- **Interpretation:** SHAP values and subgroup error analysis, including an honest look at where the model's blind spots are.
-- **Retention strategy:** six targeting strategies compared, with an explicit sensitivity analysis over CLV, offer cost, and retention success rate.
+The IBM Telco Customer Churn sample dataset: 7,043 customers, of which 11 with missing billing data were dropped, leaving 7,032. Overall churn rate: 26.6%. Data is split 80/20 into training and test sets (1,407 test customers), stratified on churn, before any fitted transformation.
 
 ## Key findings
 
-- Tenure and monthly charges are the two strongest individual predictors of churn, both by a wide statistical margin (p = 6.0×10⁻²¹¹ and p = 8.5×10⁻⁵⁴).
-- Three well-tuned models land within 1 point of each other on AUC-ROC — the simplest one is competitive, not clearly worse.
-- The model's biggest blind spot (long-tenure, long-contract churners) is exactly where its strongest predictive signal also lives. Two-year contract holders have a 100% false-negative rate — stated plainly as a limitation, not hidden.
-- Model-based retention targeting beats contacting every customer, but only above a **~39% retention success rate**. Below that, blanket outreach wins. The claim is conditional, not absolute.
+**1. Tenure is the clearest churn signal.** Churners are concentrated in their first months as customers, while long-standing customers rarely leave. Tenure and monthly charges are the two strongest individual predictors (Mann-Whitney U, p = 6.0×10⁻²¹¹ and p = 8.5×10⁻⁵⁴).
 
-## Stack
+![Tenure distribution for churned and retained customers](images/tenure_churn.png)
 
-Python · pandas · scikit-learn · XGBoost · SHAP · Power BI
+**2. The simplest model is the best one.** Logistic Regression, Random Forest and XGBoost land within about one point of each other on AUC-ROC, and Logistic Regression comes out on top on the test set (0.838) and in 5-fold cross-validation on the training data (0.848 ± 0.007). It was carried forward because it's both the best performer and the easiest to explain.
 
-## Data
+![ROC curves for the three models](images/roc_curves.png)
 
-This project uses the [Telco Customer Churn dataset](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) (IBM sample data, widely used on Kaggle). The raw and processed data files aren't included in this repo since it's third-party data, not mine to redistribute — download it from the link above and drop it in `data/` to reproduce the notebooks.
+**3. The predicted probabilities can be trusted.** An earlier version used class weighting to handle the imbalance, which pushed predicted probabilities well above the real churn rates. Removing the weighting and handling the imbalance through the decision threshold instead (0.35, chosen by cross-validation on training data only) gives a well-calibrated model: a Brier score of 0.139, against 0.195 for always predicting the base rate.
+
+![Calibration curve for the final model](images/calibration_curve.png)
+
+**4. Targeting with the model beats contacting everyone, at the base-case assumptions.** At the locked threshold, the model contacts 490 of 1,407 test customers (35%) and reaches 270 of the 374 churners (72%), at about twice the hit rate of random outreach. Assuming a customer lifetime value of $1,200, a $50 offer cost and a 30% retention success rate, that's worth $72,700, compared with $64,290 for contacting everyone.
+
+![Net value of each targeting strategy](images/net_value_by_strategy.png)
+
+**5. That conclusion depends on how well retention offers work.** Targeting wins as long as offers succeed less than about 37% of the time. Above that, saving every possible churner is worth the cost of contacting everyone. The sensitivity analysis also shows the result flipping at a $1,600 lifetime value or a $30 offer cost. So the practical recommendation is conditional: before choosing a strategy, a business should measure its real retention success rate.
+
+![Break-even retention success rate](images/breakeven_analysis.png)
+
+**6. The model's blind spot is long-contract customers.** It misses nearly all churners on one- and two-year contracts, because so few of them leave that the model learns to treat long contracts as safe. The two-year figure (a 100% miss rate) rests on only about 8 churners in the test set, so it's a small sample, but the pattern is consistent across contract and tenure segments.
+
+## Approach
+
+- **EDA:** Mann-Whitney U tests for continuous variables, and chi-square tests with Cramér's V for categorical ones, so every relationship is tested rather than judged by eye.
+- **Feature engineering:** leakage-safe by design. Engineered features use fixed rules or per-row arithmetic; the two steps that need a dataset statistic (the spend-median threshold and one-hot encoding) are fitted on training data only.
+- **Modelling:** three models compared on AUC-ROC, PR-AUC and F1, with 5-fold cross-validation as a stability check. Logistic Regression is trained inside a pipeline, so scaling is re-fitted within each cross-validation fold.
+- **Threshold selection:** chosen to maximise F1 on out-of-fold predictions from the training set, then locked before the test set is used once for the final evaluation.
+- **Calibration:** checked with a reliability diagram and Brier score against a base-rate reference.
+- **Interpretation:** coefficients, SHAP values for individual customers, and an error analysis by contract, tenure, internet service and payment method.
+- **Retention strategy:** six strategies compared (contact nobody, everyone, the top 5%, 10% or 20% by risk, or everyone above the locked threshold), with sensitivity and break-even analyses over lifetime value, offer cost and retention success rate.
+
+## Limitations
+
+- The data is a public sample snapshot, not a time series, so the model can't account for when customers churn or how behaviour changes over time.
+- The lifetime value, offer cost and retention success rate are illustrative assumptions, not real figures. The analysis shows how to make the decision, not what the right numbers are for any particular business.
+- The retention model assumes an offer only affects customers who would otherwise churn, and works equally well for everyone it reaches.
+- Several features are strongly correlated (tenure, total charges and spend per month of tenure), so individual coefficients shouldn't be over-interpreted on their own.
+- No hyperparameter tuning was done; the focus was on sound methodology rather than marginal performance gains.
+
+## Reproducing the analysis
+
+The dataset isn't included in this repo, since it's third-party data. Download the [Telco Customer Churn dataset](https://www.kaggle.com/datasets/blastchar/telco-customer-churn) and save `WA_Fn-UseC_-Telco-Customer-Churn.csv` in `data/`. Then:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Run the notebooks in order (01 → 04). Each one picks up the files saved by the notebook before it, and all figures are written to `data/plots/`. Versions are pinned in `requirements.txt` because results, particularly XGBoost's, can shift slightly between library versions.
 
 ## Structure
 
@@ -48,14 +75,12 @@ This project uses the [Telco Customer Churn dataset](https://www.kaggle.com/data
 │   ├── 02_feature_engineering.ipynb
 │   ├── 03_modeling_and_evaluation.ipynb
 │   └── 04_retention_strategy.ipynb
-├── data/                (not included — see Data section above)
-│   ├── plots/            figures generated during EDA/modeling
-│   ├── chosen_model.joblib
-│   ├── fitted_preprocessor.joblib
-│   ├── locked_threshold.json
-│   ├── test_predictions.csv
-│   └── retention_strategy_scenarios.csv
+├── images/              figures used in this README
+├── data/                not included (see above); generated files are saved here
+├── requirements.txt
 └── README.md
 ```
 
-Run the notebooks in order (01 → 04); each one picks up the artifacts (processed features, fitted preprocessor, trained model, locked threshold) saved by the notebook before it.
+## Stack
+
+Python · pandas · scikit-learn · XGBoost · SHAP · matplotlib · seaborn
